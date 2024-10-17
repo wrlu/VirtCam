@@ -7,7 +7,6 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
  * Created by wrlu on 2024/3/13.
  */
 public class VirtCameraImpl implements IXposedHookLoadPackage {
-    private static final String TAG = "VirtCamera";
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam loadPackageParam) {

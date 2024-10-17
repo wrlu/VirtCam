@@ -33,7 +33,7 @@ public class Camera1Hooker {
                 "setPreviewTexture", SurfaceTexture.class, new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        Log.i(TAG, "Before setPreviewTexture");
+                        Log.w(TAG, "Before setPreviewTexture");
                         SurfaceTexture surfaceTexture = (SurfaceTexture) param.args[0];
                         if (surfaceTexture != null && !surfaceTexture.equals(fakeTexture)) {
                             textureSurface = new Surface(surfaceTexture);
@@ -45,7 +45,7 @@ public class Camera1Hooker {
                 "setPreviewDisplay", SurfaceHolder.class, new XC_MethodReplacement() {
                     @Override
                     protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
-                        Log.i(TAG, "Replace setPreviewDisplay");
+                        Log.w(TAG, "Replace setPreviewDisplay");
                         Camera thisCamera = (Camera) param.thisObject;
                         SurfaceHolder surfaceHolder = (SurfaceHolder) param.args[0];
                         if (surfaceHolder != null) {
@@ -61,7 +61,7 @@ public class Camera1Hooker {
                 "startPreview", new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        Log.i(TAG, "Before startPreview");
+                        Log.w(TAG, "Before startPreview");
                         if (videoFile.exists()) {
                             if (displaySurface != null &&
                                     displaySurface.isValid()) {
@@ -80,7 +80,7 @@ public class Camera1Hooker {
                 "setPreviewCallback", Camera.PreviewCallback.class, new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        Log.i(TAG, "Before setPreviewCallback");
+                        Log.w(TAG, "Before setPreviewCallback");
                         Camera.PreviewCallback callback = (Camera.PreviewCallback) param.args[0];
                         if (callback != null) {
                             if (videoFile.exists()) {
@@ -120,7 +120,7 @@ public class Camera1Hooker {
                 new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        Log.i(TAG, "Before onPreviewFrame");
+                        Log.w(TAG, "Before onPreviewFrame");
                         Camera camera = (Camera) param.args[1];
                         Camera.Size previewSize = camera
                                 .getParameters().getPreviewSize();
@@ -141,7 +141,7 @@ public class Camera1Hooker {
                     }
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
-                        Log.i(TAG, "After onPreviewFrame");
+                        Log.w(TAG, "After onPreviewFrame");
                         if (dumpFrame) {
                             byte[] data = (byte[]) param.args[0];
                             Camera camera = (Camera) param.args[1];
