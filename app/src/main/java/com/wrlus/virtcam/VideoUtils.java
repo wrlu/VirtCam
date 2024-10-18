@@ -31,7 +31,7 @@ public class VideoUtils {
     private static final Map<String, ConcurrentLinkedQueue<String>> savedFrameInfoMap =
             new ConcurrentHashMap<>();
 
-    public static void playVideo(File videoFile, Surface surface) {
+    public static MediaPlayer playVideo(File videoFile, Surface surface) {
         MediaPlayer mediaPlayer = new MediaPlayer();
         mediaPlayer.setSurface(surface);
         mediaPlayer.setVolume(0, 0);
@@ -46,9 +46,12 @@ public class VideoUtils {
         try {
             mediaPlayer.setDataSource(videoFile.getAbsolutePath());
             mediaPlayer.prepare();
+            return mediaPlayer;
         } catch (IOException e) {
             Log.e(TAG, "playVideo - IOException", e);
+
         }
+        return null;
     }
 
     public static void decodeVideo(File videoFile, String pkgName) {

@@ -3,6 +3,7 @@ package com.wrlus.virtcam;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CaptureRequest;
+import android.media.MediaPlayer;
 import android.os.Environment;
 import android.os.Handler;
 import android.util.Log;
@@ -22,9 +23,25 @@ import de.robv.android.xposed.XposedHelpers;
  */
 public class Camera2Hooker {
     private static final String TAG = "VirtCamera-2";
-    // key: original target surface
-    // value: fake empty surface
-    private final Map<Surface, Surface> target2FakeSurfacesQueue =
+
+    static class CameraHookTexture {
+        public CameraHookTexture() {}
+        public CameraHookTexture(Surface fakeSurface, MediaPlayer mediaPlayer) {
+            this.fakeSurface = fakeSurface;
+            this.mediaPlayer = mediaPlayer;
+        }
+
+        /**
+         * Fake surface to receive camera image.
+         */
+        public Surface fakeSurface;
+        /**
+         * MediaPlayer to play inject video.
+         */
+        public MediaPlayer mediaPlayer;
+    }
+
+    private final Map<Surface, CameraHookTexture> hookTextureQueue =
             new ConcurrentHashMap<>();
 
     public void hookCamera2(String packageName, ClassLoader classLoader) {
@@ -41,13 +58,15 @@ public class Camera2Hooker {
                         List<Surface> fakeOutputs = new ArrayList<>();
                         int i = 1;
                         for (Surface output : outputs) {
+                            Log.e(TAG, "Output surface: " + output);
                             SurfaceTexture fakeSurfaceTexture = new SurfaceTexture(10 + i);
                             Surface fakeSurface = new Surface(fakeSurfaceTexture);
                             fakeOutputs.add(fakeSurface);
-                            target2FakeSurfacesQueue.put(output, fakeSurface);
+                            hookTextureQueue.put(output, new CameraHookTexture(fakeSurface, null));
                             ++i;
                         }
                         param.args[0] = fakeOutputs;
+                        Log.e(TAG, "createCaptureSession: replaced with " + (i - 1) + " fake surfaces !!!");
                     }
                 });
         XposedHelpers.findAndHookMethod(CaptureRequest.Builder.class,
@@ -56,8 +75,8 @@ public class Camera2Hooker {
                     protected void beforeHookedMethod(MethodHookParam param) {
                         Log.e(TAG, "Before addTarget");
                         Surface addTargetSurface = (Surface) param.args[0];
-                        if (target2FakeSurfacesQueue.containsKey(addTargetSurface)) {
-                            param.args[0] = target2FakeSurfacesQueue.get(addTargetSurface);
+                        if (hookTextureQueue.containsKey(addTargetSurface)) {
+                            param.args[0] = hookTextureQueue.get(addTargetSurface).fakeSurface;
                         }
                     }
                 });
@@ -68,14 +87,31 @@ public class Camera2Hooker {
                     protected void beforeHookedMethod(MethodHookParam param) {
                         Log.e(TAG, "Before setRepeatingRequest");
                         if (videoFile.exists()) {
-                            for (Surface output : target2FakeSurfacesQueue.keySet()) {
+                            for (Surface output : hookTextureQueue.keySet()) {
                                 if (output != null && output.isValid()) {
-                                    VideoUtils.playVideo(videoFile, output);
+                                    hookTextureQueue.get(output).mediaPlayer =
+                                            VideoUtils.playVideo(videoFile, output);
                                 }
                             }
                         } else {
                             Log.e(TAG, "Video not exists!");
                         }
+                    }
+                });
+        XposedHelpers.findAndHookMethod("android.hardware.camera2.impl.CameraDeviceImpl",
+                classLoader, "close", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        Log.e(TAG, "After close");
+                        for (CameraHookTexture texture : hookTextureQueue.values()) {
+                            if (texture.fakeSurface != null) {
+                                texture.fakeSurface.release();
+                            }
+                            if (texture.mediaPlayer != null) {
+                                texture.mediaPlayer.release();
+                            }
+                        }
+                        hookTextureQueue.clear();
                     }
                 });
     }
