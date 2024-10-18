@@ -7,16 +7,17 @@ Inject video path:
 ```
 /sdcard/Android/data/{hooked_package_name}/files/ccc/virtual.mp4
 ```
-This video will be decoded and save frames to this path (can be deleted after hooked manually):
+(Camera1Hooker only) This video will be decoded and save frames to this path (can be deleted after hooked manually):
 ```
 /sdcard/Android/data/{hooked_package_name}/files/decode_video_{random_uuid}/
 ```
-(Optional) Saved preview callback frames to this path (can be deleted after hooked manually):
+(Camera1Hooker only, Optional) Saved preview callback frames to this path (can be deleted after hooked manually):
 ```
 /sdcard/Android/data/{hooked_package_name}/files/dump_frame_{random_uuid}/
 ```
 
 # Hooked APIs:
+## Legacy Camera (android.hardware.Camera)
 ```
 android.hardware.Camera#setPreviewTexture
 android.hardware.Camera#setPreviewDisplay
@@ -24,7 +25,14 @@ android.hardware.Camera#startPreview
 android.hardware.Camera#setPreviewCallback
 android.hardware.Camera$PreviewCallback#onPreviewFrame
 ```
+## Camera 2 (android.hardware.camera2)
+```
+android.hardware.camera2.impl.CameraDeviceImpl#createCaptureSession
+android.hardware.camera2.CaptureRequest$Builder#addTarget
+android.hardware.camera2.impl.CameraCaptureSessionImpl#setRepeatingRequest
+android.hardware.camera2.impl.CameraDeviceImpl#close
+```
 
 # Credits
-* VCam: https://github.com/Xposed-Modules-Repo/com.example.vcam
 * Android-VideoToImages: https://github.com/zhantong/Android-VideoToImages
+* VCam: https://github.com/Xposed-Modules-Repo/com.example.vcam
