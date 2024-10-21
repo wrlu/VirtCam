@@ -8,7 +8,9 @@ import android.view.Surface;
 import android.view.SurfaceHolder;
 
 import java.io.File;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XC_MethodReplacement;
@@ -21,9 +23,9 @@ public class Camera1Hooker {
     private static final String TAG = "VirtCamera-1";
 
     private int frameCount = 0;
-    private Surface displaySurface;
-    private Surface textureSurface;
-    private SurfaceTexture fakeTexture;
+    private final Map<Surface, CameraHookTexture> hookTextureQueue =
+            new ConcurrentHashMap<>();
+    private SurfaceTexture fakeSurfaceTexture;
 
     public void hookCamera1(String packageName, ClassLoader classLoader) {
         File videoFile = new File(Environment.getExternalStorageDirectory(),
@@ -35,9 +37,13 @@ public class Camera1Hooker {
                     protected void beforeHookedMethod(MethodHookParam param) {
                         Log.w(TAG, "Before setPreviewTexture");
                         SurfaceTexture surfaceTexture = (SurfaceTexture) param.args[0];
-                        if (surfaceTexture != null && !surfaceTexture.equals(fakeTexture)) {
-                            textureSurface = new Surface(surfaceTexture);
-                            param.args[0] = new SurfaceTexture(10);
+                        if (surfaceTexture != null && !fakeSurfaceTexture.equals(surfaceTexture)) {
+                            Surface textureSurface = new Surface(surfaceTexture);
+                            fakeSurfaceTexture = new SurfaceTexture(10);
+                            Surface fakeSurface = new Surface(fakeSurfaceTexture);
+                            hookTextureQueue.put(textureSurface,
+                                    new CameraHookTexture(fakeSurface, null));
+                            param.args[0] = fakeSurfaceTexture;
                         }
                     }
                 });
@@ -49,10 +55,13 @@ public class Camera1Hooker {
                         Camera thisCamera = (Camera) param.thisObject;
                         SurfaceHolder surfaceHolder = (SurfaceHolder) param.args[0];
                         if (surfaceHolder != null) {
-                            displaySurface = surfaceHolder.getSurface();
-                            fakeTexture = new SurfaceTexture(10);
+                            Surface displaySurface = surfaceHolder.getSurface();
+                            fakeSurfaceTexture = new SurfaceTexture(10);
+                            Surface fakeSurface = new Surface(fakeSurfaceTexture);
+                            hookTextureQueue.put(displaySurface,
+                                    new CameraHookTexture(fakeSurface, null));
                             // Give up setPreviewDisplay call and use setPreviewTexture instead.
-                            thisCamera.setPreviewTexture(fakeTexture);
+                            thisCamera.setPreviewTexture(fakeSurfaceTexture);
                         }
                         return null;
                     }
@@ -63,17 +72,29 @@ public class Camera1Hooker {
                     protected void beforeHookedMethod(MethodHookParam param) {
                         Log.w(TAG, "Before startPreview");
                         if (videoFile.exists()) {
-                            if (displaySurface != null &&
-                                    displaySurface.isValid()) {
-                                VideoUtils.playVideo(videoFile, displaySurface);
-                            }
-                            if (textureSurface != null &&
-                                    textureSurface.isValid()) {
-                                VideoUtils.playVideo(videoFile, textureSurface);
+                            for (Surface output : hookTextureQueue.keySet()) {
+                                if (output != null && output.isValid()) {
+                                    hookTextureQueue.get(output).mediaPlayer =
+                                            VideoUtils.playVideo(videoFile, output);
+                                }
                             }
                         } else {
                             Log.e(TAG, "Video not exists!");
                         }
+                    }
+                });
+        XposedHelpers.findAndHookMethod(Camera.class,
+                "stopPreview", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        Log.w(TAG, "After stopPreview");
+                        for (CameraHookTexture texture : hookTextureQueue.values()) {
+                            if (texture.fakeSurface != null) texture.fakeSurface.release();
+                            if (texture.mediaPlayer != null) texture.mediaPlayer.release();
+                        }
+                        hookTextureQueue.clear();
+                        fakeSurfaceTexture.release();
+                        fakeSurfaceTexture = null;
                     }
                 });
         XposedHelpers.findAndHookMethod(Camera.class,
@@ -91,8 +112,6 @@ public class Camera1Hooker {
                                 Log.e(TAG, "Video not exists!");
                             }
                         } else {
-                            if (displaySurface != null) displaySurface.release();
-                            if (textureSurface != null) textureSurface.release();
                             frameCount = 0;
                             Log.e(TAG, "Camera.setPreviewCallback: " +
                                     "callback is null, skip.");
