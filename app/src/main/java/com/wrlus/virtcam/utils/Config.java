@@ -7,7 +7,8 @@ import java.io.File;
 public class Config {
     public static final File baseStorage = Default.EXTERNAL_STORAGE;
     public static final String videoPath = Default.VIDEO_PATH;
-    public static final boolean enableCamera2Hook = true;
+    public static final boolean enableCamera2Hook = false;
+    public static final boolean enableCamera2PreviewHook = true;
     public static final boolean enableLegacyCameraHook = true;
     public static final boolean enableLegacyCameraDumpFrame = false;
 

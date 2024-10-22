@@ -39,22 +39,6 @@ public class VideoUtils {
         return null;
     }
 
-    public static void savePreviewFrameImage(byte[] data, int width, int height,
-                                             File dumpFrameOutput, int frameCount) {
-        YuvImage yuvImage = new YuvImage(data, ImageFormat.NV21,
-                width, height, null);
-        try {
-            FileOutputStream fos = new FileOutputStream(
-                    new File(dumpFrameOutput, frameCount + ".jpg"));
-            yuvImage.compressToJpeg(new Rect(0, 0, width, height)
-                    , 100, fos);
-            fos.flush();
-            fos.close();
-        } catch (IOException e) {
-            Log.e(TAG, "savePreviewFrameImage - IOException", e);
-        }
-    }
-
     public static byte[] rotateNV21(byte[] yuv, int width, int height, int rotation) {
         if (rotation == 0) return yuv;
         if (rotation % 90 != 0 || rotation < 0 || rotation > 270) {
@@ -90,5 +74,21 @@ public class VideoUtils {
             }
         }
         return output;
+    }
+
+    public static void savePreviewFrameImage(byte[] data, int width, int height,
+                                             File dumpFrameOutput, int frameCount) {
+        YuvImage yuvImage = new YuvImage(data, ImageFormat.NV21,
+                width, height, null);
+        try {
+            FileOutputStream fos = new FileOutputStream(
+                    new File(dumpFrameOutput, frameCount + ".jpg"));
+            yuvImage.compressToJpeg(new Rect(0, 0, width, height)
+                    , 100, fos);
+            fos.flush();
+            fos.close();
+        } catch (IOException e) {
+            Log.e(TAG, "savePreviewFrameImage - IOException", e);
+        }
     }
 }
