@@ -59,8 +59,8 @@ public class Camera2Hooker {
                 });
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             XposedHelpers.findAndHookMethod("android.hardware.camera2.impl.CameraDeviceImpl",
-                    classLoader, "createCaptureSession", List.class,
-                    SessionConfiguration.class, new XC_MethodHook() {
+                    classLoader, "createCaptureSession", SessionConfiguration.class,
+                    new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
                             Log.e(TAG, "Before createCaptureSession");
