@@ -1,4 +1,4 @@
-package com.wrlus.virtcam;
+package com.wrlus.virtcam.hook;
 
 import android.annotation.SuppressLint;
 import android.graphics.SurfaceTexture;
@@ -7,10 +7,11 @@ import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.OutputConfiguration;
 import android.hardware.camera2.params.SessionConfiguration;
 import android.os.Build;
-import android.os.Environment;
 import android.os.Handler;
 import android.util.Log;
 import android.view.Surface;
+
+import com.wrlus.virtcam.utils.VideoUtils;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -26,20 +27,26 @@ import de.robv.android.xposed.XposedHelpers;
  */
 public class Camera2Hooker {
     private static final String TAG = "VirtCamera-2";
-
     private final Map<Surface, CameraHookTexture> hookTextureQueue =
             new ConcurrentHashMap<>();
+    private final File videoFile;
 
-    public void hookCamera2(String packageName, ClassLoader classLoader) {
-        File videoFile = new File(Environment.getExternalStorageDirectory(),
-                "Android/data/" + packageName +
-                        "/files/ccc/virtual.mp4");
+    public Camera2Hooker(File videoFile) {
+        this.videoFile = videoFile;
+    }
+
+    public void hookCamera2(ClassLoader classLoader) {
+        if (!videoFile.exists()) {
+            Log.e(TAG, "Cannot find virtual video, please put in " +
+                    videoFile.getAbsolutePath());
+            return;
+        }
         XposedHelpers.findAndHookMethod("android.hardware.camera2.impl.CameraDeviceImpl",
                 classLoader, "createCaptureSession", List.class,
                 CameraCaptureSession.StateCallback.class, Handler.class, new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        Log.e(TAG, "Before createCaptureSession");
+                        Log.w(TAG, "Before createCaptureSession");
                         List<Surface> outputs = (List<Surface>) param.args[0];
                         List<Surface> fakeOutputs = new ArrayList<>();
                         int i = 1;
@@ -53,7 +60,7 @@ public class Camera2Hooker {
                             ++i;
                         }
                         param.args[0] = fakeOutputs;
-                        Log.e(TAG, "createCaptureSession: " +
+                        Log.w(TAG, "createCaptureSession: " +
                                 "replaced with " + (i - 1) + " fake surfaces !!!");
                     }
                 });
@@ -63,7 +70,7 @@ public class Camera2Hooker {
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
-                            Log.e(TAG, "Before createCaptureSession");
+                            Log.w(TAG, "Before createCaptureSession");
                             SessionConfiguration config = (SessionConfiguration) param.args[0];
                             List<OutputConfiguration> outputConfigs = config.getOutputConfigurations();
                             List<OutputConfiguration> fakeOutputConfigs = new ArrayList<>();
@@ -80,7 +87,7 @@ public class Camera2Hooker {
                                 ++i;
                             }
                             param.args[0] = fakeOutputConfigs;
-                            Log.e(TAG, "createCaptureSession (SessionConfiguration): " +
+                            Log.w(TAG, "createCaptureSession (SessionConfiguration): " +
                                     "replaced with " + (i - 1) + " fake surfaces !!!");
                         }
                     });
@@ -89,7 +96,7 @@ public class Camera2Hooker {
                 "addTarget", Surface.class, new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        Log.e(TAG, "Before addTarget");
+                        Log.w(TAG, "Before addTarget");
                         Surface addTargetSurface = (Surface) param.args[0];
                         if (hookTextureQueue.containsKey(addTargetSurface)) {
                             param.args[0] = hookTextureQueue.get(addTargetSurface).fakeSurface;
@@ -101,16 +108,12 @@ public class Camera2Hooker {
                 CameraCaptureSession.CaptureCallback.class, Handler.class, new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        Log.e(TAG, "Before setRepeatingRequest");
-                        if (videoFile.exists()) {
-                            for (Surface output : hookTextureQueue.keySet()) {
-                                if (output != null && output.isValid()) {
-                                    hookTextureQueue.get(output).mediaPlayer =
-                                            VideoUtils.playVideo(videoFile, output);
-                                }
+                        Log.w(TAG, "Before setRepeatingRequest");
+                        for (Surface output : hookTextureQueue.keySet()) {
+                            if (output != null && output.isValid()) {
+                                hookTextureQueue.get(output).mediaPlayer =
+                                        VideoUtils.playVideo(videoFile, output);
                             }
-                        } else {
-                            Log.e(TAG, "Video not exists!");
                         }
                     }
                 });
@@ -118,7 +121,7 @@ public class Camera2Hooker {
                 classLoader, "close", new XC_MethodHook() {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
-                        Log.e(TAG, "After close");
+                        Log.w(TAG, "After close");
                         for (CameraHookTexture texture : hookTextureQueue.values()) {
                             if (texture.fakeSurface != null) texture.fakeSurface.release();
                             if (texture.mediaPlayer != null) texture.mediaPlayer.release();

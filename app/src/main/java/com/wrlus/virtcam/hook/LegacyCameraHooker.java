@@ -1,16 +1,26 @@
-package com.wrlus.virtcam;
+package com.wrlus.virtcam.hook;
 
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
-import android.os.Environment;
 import android.util.Log;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 
+import com.polarxiong.videotoimages.OutputImageFormat;
+import com.polarxiong.videotoimages.VideoToFrames;
+import com.wrlus.virtcam.utils.Config;
+import com.wrlus.virtcam.utils.VideoUtils;
+
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XC_MethodReplacement;
@@ -19,18 +29,29 @@ import de.robv.android.xposed.XposedHelpers;
 /**
  * Created by wrlu on 2024/3/13.
  */
-public class Camera1Hooker {
+public class LegacyCameraHooker {
     private static final String TAG = "VirtCamera-1";
-
     private int frameCount = 0;
     private final Map<Surface, CameraHookTexture> hookTextureQueue =
             new ConcurrentHashMap<>();
     private SurfaceTexture fakeSurfaceTexture;
+    private final Map<String, ConcurrentLinkedQueue<String>> decodedFrameInfoMap =
+            new ConcurrentHashMap<>();
+    private final File baseFile;
+    private final File videoFile;
 
-    public void hookCamera1(String packageName, ClassLoader classLoader) {
-        File videoFile = new File(Environment.getExternalStorageDirectory(),
-                "Android/data/" + packageName +
-                        "/files/ccc/virtual.mp4");
+    public LegacyCameraHooker(File baseFile) {
+        this.baseFile = baseFile;
+        this.videoFile = new File(baseFile, Config.videoPath);
+    }
+
+    @SuppressWarnings({"deprecation"})
+    public void hookCamera1(ClassLoader classLoader) {
+        if (!videoFile.exists()) {
+            Log.e(TAG, "Cannot find virtual video, please put in " +
+                    videoFile.getAbsolutePath());
+            return;
+        }
         XposedHelpers.findAndHookMethod(Camera.class,
                 "setPreviewTexture", SurfaceTexture.class, new XC_MethodHook() {
                     @Override
@@ -71,15 +92,11 @@ public class Camera1Hooker {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
                         Log.w(TAG, "Before startPreview");
-                        if (videoFile.exists()) {
-                            for (Surface output : hookTextureQueue.keySet()) {
-                                if (output != null && output.isValid()) {
-                                    hookTextureQueue.get(output).mediaPlayer =
-                                            VideoUtils.playVideo(videoFile, output);
-                                }
+                        for (Surface output : hookTextureQueue.keySet()) {
+                            if (output != null && output.isValid()) {
+                                hookTextureQueue.get(output).mediaPlayer =
+                                        VideoUtils.playVideo(videoFile, output);
                             }
-                        } else {
-                            Log.e(TAG, "Video not exists!");
                         }
                     }
                 });
@@ -95,6 +112,7 @@ public class Camera1Hooker {
                         hookTextureQueue.clear();
                         fakeSurfaceTexture.release();
                         fakeSurfaceTexture = null;
+                        frameCount = 0;
                     }
                 });
         XposedHelpers.findAndHookMethod(Camera.class,
@@ -103,30 +121,52 @@ public class Camera1Hooker {
                     protected void beforeHookedMethod(MethodHookParam param) {
                         Log.w(TAG, "Before setPreviewCallback");
                         Camera.PreviewCallback callback = (Camera.PreviewCallback) param.args[0];
-                        if (callback != null) {
-                            if (videoFile.exists()) {
-                                VideoUtils.decodeVideo(videoFile, packageName);
-                                hookPreviewCallback(callback, videoFile, packageName,
-                                        false);
-                            } else {
-                                Log.e(TAG, "Video not exists!");
+                        if (videoFile.exists()) {
+                            String infoKey = videoFile.getAbsolutePath();
+                            // We will only decode a video once.
+                            if (!decodedFrameInfoMap.containsKey(infoKey)) {
+                                // Create decoded video frame saved path.
+                                File outputDir = new File(baseFile,
+                                        "files/decode_video_" + UUID.randomUUID());
+                                Log.w(TAG, "Create dir " + outputDir.getAbsolutePath() +
+                                        " result: " + outputDir.mkdir());
+
+                                final ConcurrentLinkedQueue<String> decodeFrameInfoQueue =
+                                        new ConcurrentLinkedQueue<>();
+                                decodedFrameInfoMap.put(infoKey, decodeFrameInfoQueue);
+
+                                // Use VideoToFrames to decode video, will run in a handler thread.
+                                VideoToFrames videoToFrames = new VideoToFrames();
+                                videoToFrames.setSaveFrames(outputDir.getAbsolutePath(),
+                                        OutputImageFormat.NV21);
+                                videoToFrames.setCallback(new VideoToFrames.Callback() {
+                                    @Override
+                                    public void onDecodeFrameToFile(int index, String fileName) {
+                                        decodeFrameInfoQueue.add(fileName);
+                                    }
+                                    @Override
+                                    public void onFinishDecode() {
+                                        Log.i(TAG, "onFinishDecode: finish decode video: " +
+                                                videoFile.getAbsolutePath() + ", to path: " +
+                                                outputDir.getAbsolutePath());
+                                    }
+                                });
+                                videoToFrames.decode(videoFile.getAbsolutePath());
                             }
+                            // Hook the real preview callback method.
+                            hookPreviewCallback(callback, videoFile);
                         } else {
-                            frameCount = 0;
-                            Log.e(TAG, "Camera.setPreviewCallback: " +
-                                    "callback is null, skip.");
+                            Log.e(TAG, "Video not exists!");
                         }
                     }
                 });
     }
 
-    private void hookPreviewCallback(Camera.PreviewCallback callback, File videoFile,
-                                     String packageName, boolean dumpFrame) {
+    @SuppressWarnings({"deprecation"})
+    private void hookPreviewCallback(Camera.PreviewCallback callback, File videoFile) {
         File dumpFrameOutput = new File(
-                Environment.getExternalStorageDirectory(),
-                "Android/data/" + packageName +
-                        "/files/dump_frame_" + UUID.randomUUID() + "/");
-        if (dumpFrame) {
+                baseFile, "files/dump_frame_" + UUID.randomUUID() + "/");
+        if (Config.enableLegacyCameraDumpFrame) {
             if (!dumpFrameOutput.exists()) {
                 Log.e(TAG, "dump frame output mkdir: " +
                         dumpFrameOutput.mkdir());
@@ -143,7 +183,7 @@ public class Camera1Hooker {
                         Camera camera = (Camera) param.args[1];
                         Camera.Size previewSize = camera
                                 .getParameters().getPreviewSize();
-                        byte[] newData = VideoUtils.getReplacedPreviewFrame(videoFile, packageName);
+                        byte[] newData = getReplacedPreviewFrame(videoFile);
                         if (newData != null) {
                             // We need exchange width and height for rotation.
                             int videoWidth = previewSize.height;
@@ -161,7 +201,7 @@ public class Camera1Hooker {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
                         Log.w(TAG, "After onPreviewFrame");
-                        if (dumpFrame) {
+                        if (Config.enableLegacyCameraDumpFrame) {
                             byte[] data = (byte[]) param.args[0];
                             Camera camera = (Camera) param.args[1];
                             Camera.Size previewSize = camera
@@ -175,6 +215,43 @@ public class Camera1Hooker {
                 });
     }
 
+    private byte[] getReplacedPreviewFrame(File videoFile) {
+        String mapKey = videoFile.getAbsolutePath();
+        if (decodedFrameInfoMap.containsKey(mapKey)) {
+            ConcurrentLinkedQueue<String> decodeFrameInfoQueue = decodedFrameInfoMap.get(mapKey);
+            if (decodeFrameInfoQueue != null) {
+                String savedFrameFileName = decodeFrameInfoQueue.poll();
+                if (savedFrameFileName != null) {
+                    decodeFrameInfoQueue.add(savedFrameFileName);
+                    return readFile(savedFrameFileName);
+                }
+            } else {
+                Log.e(TAG, "replacePreviewFrame: " +
+                        "found null saved frame queue.");
+            }
+        } else {
+            Log.e(TAG, "replacePreviewFrame: " +
+                    "cannot find saved frame queue.");
+        }
+        return null;
+    }
 
+    private static byte[] readFile(String filePath) {
+        Path path = Paths.get(filePath);
+        try {
+            int size = (int) Files.size(path);
+            byte[] data = new byte[size];
+            FileInputStream fis = new FileInputStream(filePath);
+            int readSize = fis.read(data);
+            if (readSize != size) {
+                Log.w(TAG, "readFile: readSize != size");
+            }
+            fis.close();
+            return data;
+        } catch (IOException e) {
+            Log.e(TAG, "readFile - IOException", e);
+        }
+        return null;
+    }
 }
 
