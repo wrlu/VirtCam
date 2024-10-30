@@ -209,7 +209,7 @@ public class Camera2Hooker implements HookInterface {
                                         resource.mediaPlayer == null && resource.isConfigured) {
                                     resource.mediaPlayer =
                                             VideoUtils.playVideo(videoFile, output);
-                                    Log.d(TAG, "Start playing video on output surface: " + output);
+                                    Log.w(TAG, "Start playing video on output surface: " + output);
                                 }
                                 // Use MediaCodec to inject ImageReader.
                                 if (!isCreateBySurfaceTexture(output) &&
@@ -217,7 +217,7 @@ public class Camera2Hooker implements HookInterface {
                                     if (rotatedVideoFile.exists()) {
                                         resource.mediaCodec = VideoUtils.decodeVideoToSurface(
                                                 rotatedVideoFile, output);
-                                        Log.d(TAG, "Start decode video on output surface: " + output);
+                                        Log.w(TAG, "Start decode video on output surface: " + output);
                                     }
                                 }
                             }

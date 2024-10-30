@@ -3,8 +3,6 @@ package com.wrlus.virtcam.utils;
 import android.graphics.ImageFormat;
 import android.graphics.Rect;
 import android.graphics.YuvImage;
-import android.media.Image;
-import android.media.ImageWriter;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaExtractor;
@@ -73,28 +71,50 @@ public class VideoUtils {
             MediaFormat mediaFormat = extractor.getTrackFormat(trackIndex);
             mediaFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT,
                     MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible);
+            mediaFormat.setInteger(MediaFormat.KEY_WIDTH, 640);
+            mediaFormat.setInteger(MediaFormat.KEY_WIDTH, 480);
             MediaCodec mediaCodec = MediaCodec
                     .createDecoderByType(mediaFormat.getString(MediaFormat.KEY_MIME));
+            mediaCodec.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT);
+            long startMs = System.currentTimeMillis();
             mediaCodec.setCallback(new MediaCodec.Callback() {
                 @Override
                 public void onInputBufferAvailable(@NonNull MediaCodec codec, int index) {
-                    ByteBuffer inputBuffer = codec.getInputBuffer(index);
-                    int sampleSize = extractor.readSampleData(inputBuffer, 0);
-                    if (sampleSize > 0) {
-                        long presentationTimeUs = extractor.getSampleTime();
-                        codec.queueInputBuffer(index, 0, sampleSize, presentationTimeUs, 0);
-                        extractor.advance();
-                    } else {
-                        codec.queueInputBuffer(index, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                    try {
+                        ByteBuffer inputBuffer = codec.getInputBuffer(index);
+                        int sampleSize = extractor.readSampleData(inputBuffer, 0);
+                        if (sampleSize > 0) {
+                            long presentationTimeUs = extractor.getSampleTime();
+                            codec.queueInputBuffer(index, 0, sampleSize, presentationTimeUs, 0);
+                            extractor.advance();
+                        } else {
+                            codec.queueInputBuffer(index, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                            extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
+                            extractor.advance();
+                        }
+                    } catch (IllegalStateException e) {
+                        Log.e(TAG, "IllegalStateException in onInputBufferAvailable", e);
                     }
                 }
 
                 @Override
                 public void onOutputBufferAvailable(@NonNull MediaCodec codec, int index, @NonNull MediaCodec.BufferInfo info) {
-                    if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM)!= 0) {
-                        extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
+                    if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                        return;
                     }
-                    codec.releaseOutputBuffer(index, true);
+                    long timeDifference = info.presentationTimeUs / 1000 - (System.currentTimeMillis() - startMs);
+                    if (timeDifference > 0) {
+                        try {
+                            Thread.sleep(timeDifference);
+                        } catch (InterruptedException e) {
+                            Log.e(TAG, "InterruptedException when sync in onOutputBufferAvailable", e);
+                        }
+                    }
+                    try {
+                        codec.releaseOutputBuffer(index, true);
+                    } catch (IllegalStateException e) {
+                        Log.e(TAG, "IllegalStateException in onOutputBufferAvailable", e);
+                    }
                 }
 
                 @Override
