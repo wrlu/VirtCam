@@ -5,13 +5,17 @@ Android Virtual Camera
 # Usage
 Inject video path: 
 ```
-/sdcard/Android/data/{hooked_package_name}/files/ccc/virtual.mp4
+/sdcard/Android/data/{hooked_package_name}/files/fkv/virtual.mp4
 ```
-(Camera1Hooker only) This video will be decoded and save frames to this path (can be deleted after hooked manually):
+(Camera 2 hook only) Inject video path (rotated):
+```
+/sdcard/Android/data/{hooked_package_name}/files/fkv/rotated_virtual.mp4
+```
+(Legacy Camera hook only) This video will be decoded and save frames to this path (can be deleted after hooked manually):
 ```
 /sdcard/Android/data/{hooked_package_name}/files/decode_video_{random_uuid}/
 ```
-(Camera1Hooker only, Optional) Saved preview callback frames to this path (can be deleted after hooked manually):
+(Legacy Camera hook, Optional) Saved preview callback frames to this path (can be deleted after hooked manually):
 ```
 /sdcard/Android/data/{hooked_package_name}/files/dump_frame_{random_uuid}/
 ```

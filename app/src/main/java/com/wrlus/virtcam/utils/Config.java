@@ -16,7 +16,7 @@ public class Config {
         public static final File EXTERNAL_STORAGE =
                 new File(Environment.getExternalStorageDirectory(), "Android/data");
         public static final File INTERNAL_STORAGE = new File("/data/data");
-        public static final String VIDEO_PATH = "files/ccc/virtual.mp4";
-        public static final String ROTATED_VIDEO_PATH = "files/ccc/virtual_r.mp4";
+        public static final String VIDEO_PATH = "files/fkv/virtual.mp4";
+        public static final String ROTATED_VIDEO_PATH = "files/fkv/rotated_virtual.mp4";
     }
 }

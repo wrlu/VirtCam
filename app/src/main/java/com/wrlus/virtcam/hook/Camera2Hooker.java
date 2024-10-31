@@ -50,9 +50,10 @@ public class Camera2Hooker implements HookInterface {
     }
 
     private void startHook(ClassLoader classLoader) {
-        if (!videoFile.exists()) {
+        if (!videoFile.exists() && !rotatedVideoFile.exists()) {
             Log.e(TAG, "Cannot find virtual video, please put in " +
-                    videoFile.getAbsolutePath());
+                    videoFile.getAbsolutePath() + " or put rotated video in " +
+                    rotatedVideoFile.getAbsolutePath());
             return;
         }
         XposedHelpers.findAndHookMethod("android.hardware.camera2.impl.CameraDeviceImpl",
@@ -207,14 +208,17 @@ public class Camera2Hooker implements HookInterface {
                                 // Use MediaPlayer to inject SurfaceTexture.
                                 if (isCreateBySurfaceTexture(output) &&
                                         resource.mediaPlayer == null && resource.isConfigured) {
-                                    resource.mediaPlayer =
-                                            VideoUtils.playVideo(videoFile, output);
-                                    Log.w(TAG, "Start playing video on output surface: " + output);
+                                    if (videoFile.exists()) {
+                                        resource.mediaPlayer =
+                                                VideoUtils.playVideo(videoFile, output);
+                                        Log.w(TAG, "Start playing video on output surface: " + output);
+                                    }
                                 }
                                 // Use MediaCodec to inject ImageReader.
                                 if (!isCreateBySurfaceTexture(output) &&
                                         resource.mediaCodec == null && resource.isConfigured) {
                                     if (rotatedVideoFile.exists()) {
+                                        // Must use rotated video in ImageReader hook.
                                         resource.mediaCodec = VideoUtils.decodeVideoToSurface(
                                                 rotatedVideoFile, output);
                                         Log.w(TAG, "Start decode video on output surface: " + output);
