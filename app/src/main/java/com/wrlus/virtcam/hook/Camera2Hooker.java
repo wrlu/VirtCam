@@ -50,6 +50,47 @@ public class Camera2Hooker implements HookInterface {
     }
 
     private void startHook(ClassLoader classLoader) {
+        hookWithoutVideo(classLoader);
+        hookWithVideo(classLoader);
+    }
+
+    private void hookWithoutVideo(ClassLoader classLoader) {
+        XposedHelpers.findAndHookMethod("android.media.ImageReader",
+                classLoader, "newInstance", int.class, int.class,
+                int.class, int.class, new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        int width = (int) param.args[0];
+                        int height = (int) param.args[1];
+                        int format = (int) param.args[2];
+                        int maxImages = (int) param.args[3];
+                        ImageReader imageReader = (ImageReader) param.getResult();
+                        hookImageReaderNewInstance(width, height, format, maxImages, imageReader);
+                    }
+                });
+        XposedHelpers.findAndHookMethod("android.media.ImageReader",
+                classLoader, "newInstance", int.class, int.class,
+                int.class, int.class, long.class, new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        int width = (int) param.args[0];
+                        int height = (int) param.args[1];
+                        int format = (int) param.args[2];
+                        int maxImages = (int) param.args[3];
+                        ImageReader imageReader = (ImageReader) param.getResult();
+                        hookImageReaderNewInstance(width, height, format, maxImages, imageReader);
+                    }
+                });
+    }
+
+    private void hookImageReaderNewInstance(int width, int height, int format, int maxImages,
+                                            ImageReader imageReader) {
+        Log.w(TAG, "After ImageReader newInstance");
+        Log.e(TAG, "ImageReader#newInstance: width=" + width + " , height=" + height +
+                " ,format=" + format + " ,maxImages=" + maxImages);
+    }
+
+    private void hookWithVideo(ClassLoader classLoader) {
         if (!videoFile.exists() && !rotatedVideoFile.exists()) {
             Log.e(TAG, "Cannot find virtual video, please put in " +
                     videoFile.getAbsolutePath() + " or put rotated video in " +
@@ -61,7 +102,7 @@ public class Camera2Hooker implements HookInterface {
                 CameraCaptureSession.StateCallback.class, Handler.class, new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        Log.w(TAG, "Before createCaptureSession");
+                        Log.w(TAG, "Before CameraDeviceImpl createCaptureSession");
                         List<Surface> outputs = (List<Surface>) param.args[0];
                         List<Surface> fakeOutputs = new ArrayList<>();
                         int i = 1;
@@ -108,7 +149,7 @@ public class Camera2Hooker implements HookInterface {
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
-                            Log.w(TAG, "Before createCaptureSession");
+                            Log.w(TAG, "Before CameraDeviceImpl createCaptureSession");
                             SessionConfiguration config = (SessionConfiguration) param.args[0];
                             List<OutputConfiguration> outputConfigs = config.getOutputConfigurations();
                             List<OutputConfiguration> fakeOutputConfigs = new ArrayList<>();
@@ -162,7 +203,7 @@ public class Camera2Hooker implements HookInterface {
                 "addTarget", Surface.class, new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        Log.w(TAG, "Before addTarget");
+                        Log.w(TAG, "Before CaptureRequest.Builder addTarget");
                         Surface target = (Surface) param.args[0];
                         if (!hookTextureMap.containsKey(target)) {
                             // In some cases, addTarget will be called BEFORE createCaptureSession.
@@ -201,7 +242,7 @@ public class Camera2Hooker implements HookInterface {
                 CameraCaptureSession.CaptureCallback.class, Handler.class, new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        Log.w(TAG, "Before setRepeatingRequest");
+                        Log.w(TAG, "Before CameraCaptureSessionImpl setRepeatingRequest");
                         for (Surface output : hookTextureMap.keySet()) {
                             if (output != null && output.isValid()) {
                                 CameraHookResource resource = hookTextureMap.get(output);
@@ -232,7 +273,7 @@ public class Camera2Hooker implements HookInterface {
                 classLoader, "close", new XC_MethodHook() {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
-                        Log.w(TAG, "After close");
+                        Log.w(TAG, "After CameraDeviceImpl close");
                         for (CameraHookResource resource : hookTextureMap.values()) {
                             if (resource.fakeSurfaceTexture != null) resource.fakeSurfaceTexture.release();
                             if (resource.fakeImageReader != null) resource.fakeImageReader.close();

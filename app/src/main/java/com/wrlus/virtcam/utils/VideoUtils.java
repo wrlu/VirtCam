@@ -102,6 +102,7 @@ public class VideoUtils {
                     if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
                         return;
                     }
+                    // Time sync
                     long timeDifference = info.presentationTimeUs / 1000 - (System.currentTimeMillis() - startMs);
                     if (timeDifference > 0) {
                         try {

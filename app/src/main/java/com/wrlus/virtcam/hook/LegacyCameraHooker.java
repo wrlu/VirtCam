@@ -44,8 +44,12 @@ public class LegacyCameraHooker implements HookInterface {
         startHook(loadPackageParam.classLoader);
     }
 
-    @SuppressWarnings({"deprecation"})
     private void startHook(ClassLoader classLoader) {
+        hookWithVideo(classLoader);
+    }
+
+    @SuppressWarnings({"deprecation"})
+    private void hookWithVideo(ClassLoader classLoader) {
         if (!videoFile.exists()) {
             Log.e(TAG, "Cannot find virtual video, please put in " +
                     videoFile.getAbsolutePath());
@@ -55,7 +59,7 @@ public class LegacyCameraHooker implements HookInterface {
                 "setPreviewTexture", SurfaceTexture.class, new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        Log.w(TAG, "Before setPreviewTexture");
+                        Log.w(TAG, "Before Camera setPreviewTexture");
                         SurfaceTexture surfaceTexture = (SurfaceTexture) param.args[0];
                         if (surfaceTexture != null && !fakeSurfaceTexture.equals(surfaceTexture)) {
                             Surface textureSurface = new Surface(surfaceTexture);
@@ -71,7 +75,7 @@ public class LegacyCameraHooker implements HookInterface {
                 "setPreviewDisplay", SurfaceHolder.class, new XC_MethodReplacement() {
                     @Override
                     protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
-                        Log.w(TAG, "Replace setPreviewDisplay");
+                        Log.w(TAG, "Replace Camera setPreviewDisplay");
                         Camera thisCamera = (Camera) param.thisObject;
                         SurfaceHolder surfaceHolder = (SurfaceHolder) param.args[0];
                         if (surfaceHolder != null) {
@@ -90,7 +94,7 @@ public class LegacyCameraHooker implements HookInterface {
                 "startPreview", new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        Log.w(TAG, "Before startPreview");
+                        Log.w(TAG, "Before Camera startPreview");
                         for (Surface output : hookTextureQueue.keySet()) {
                             if (output != null && output.isValid()) {
                                 hookTextureQueue.get(output).mediaPlayer =
@@ -103,7 +107,7 @@ public class LegacyCameraHooker implements HookInterface {
                 "stopPreview", new XC_MethodHook() {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
-                        Log.w(TAG, "After stopPreview");
+                        Log.w(TAG, "After Camera stopPreview");
                         for (CameraHookResource texture : hookTextureQueue.values()) {
                             if (texture.fakeSurface != null) texture.fakeSurface.release();
                             if (texture.mediaPlayer != null) texture.mediaPlayer.release();
@@ -118,7 +122,7 @@ public class LegacyCameraHooker implements HookInterface {
                 "setPreviewCallback", Camera.PreviewCallback.class, new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        Log.w(TAG, "Before setPreviewCallback");
+                        Log.w(TAG, "Before Camera setPreviewCallback");
                         Camera.PreviewCallback callback = (Camera.PreviewCallback) param.args[0];
                         if (VideoUtils.getDecodeToFileStatus() == VideoUtils.DecodeStatus.NOT_START) {
                             File outputDir = new File(baseFile,
@@ -135,9 +139,10 @@ public class LegacyCameraHooker implements HookInterface {
 
     @SuppressWarnings({"deprecation"})
     private void hookPreviewCallback(Camera.PreviewCallback callback) {
-        File dumpFrameOutput = new File(
-                baseFile, "files/dump_frame_" + UUID.randomUUID() + "/");
+        File dumpFrameOutput = null;
         if (Config.enableLegacyCameraDumpFrame) {
+            dumpFrameOutput = new File(
+                    baseFile, "files/dump_frame_" + UUID.randomUUID() + "/");
             if (!dumpFrameOutput.exists()) {
                 Log.e(TAG, "dump frame output mkdir: " +
                         dumpFrameOutput.mkdir());
@@ -150,15 +155,15 @@ public class LegacyCameraHooker implements HookInterface {
                 new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        Log.w(TAG, "Before onPreviewFrame");
+                        Log.w(TAG, "Before " + callbackClass.getSimpleName() + " onPreviewFrame");
                         Camera camera = (Camera) param.args[1];
                         Camera.Size previewSize = camera
                                 .getParameters().getPreviewSize();
                         byte[] newData = VideoUtils.getReplacedPreviewFrame();
                         if (newData != null) {
                             // We need exchange width and height for rotation.
-                            int videoWidth = previewSize.height; // 480
-                            int videoHeight = previewSize.width; // 640
+                            int videoWidth = previewSize.height;
+                            int videoHeight = previewSize.width;
                             byte[] rotateData = VideoUtils.rotateNV21(newData,
                                     videoWidth, videoHeight, 90);
                             param.args[0] = rotateData;

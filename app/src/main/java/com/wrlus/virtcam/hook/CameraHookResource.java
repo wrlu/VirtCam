@@ -29,7 +29,7 @@ public class CameraHookResource {
      */
     public SurfaceTexture fakeSurfaceTexture;
     /**
-     * Fake surface texture
+     * Fake image reader
      */
     public ImageReader fakeImageReader;
     /**
