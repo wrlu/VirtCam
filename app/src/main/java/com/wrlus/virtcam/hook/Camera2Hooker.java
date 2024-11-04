@@ -68,19 +68,21 @@ public class Camera2Hooker implements HookInterface {
                         hookImageReaderNewInstance(width, height, format, maxImages, imageReader);
                     }
                 });
-        XposedHelpers.findAndHookMethod("android.media.ImageReader",
-                classLoader, "newInstance", int.class, int.class,
-                int.class, int.class, long.class, new XC_MethodHook() {
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam param) {
-                        int width = (int) param.args[0];
-                        int height = (int) param.args[1];
-                        int format = (int) param.args[2];
-                        int maxImages = (int) param.args[3];
-                        ImageReader imageReader = (ImageReader) param.getResult();
-                        hookImageReaderNewInstance(width, height, format, maxImages, imageReader);
-                    }
-                });
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            XposedHelpers.findAndHookMethod("android.media.ImageReader",
+                    classLoader, "newInstance", int.class, int.class,
+                    int.class, int.class, long.class, new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            int width = (int) param.args[0];
+                            int height = (int) param.args[1];
+                            int format = (int) param.args[2];
+                            int maxImages = (int) param.args[3];
+                            ImageReader imageReader = (ImageReader) param.getResult();
+                            hookImageReaderNewInstance(width, height, format, maxImages, imageReader);
+                        }
+                    });
+        }
     }
 
     private void hookImageReaderNewInstance(int width, int height, int format, int maxImages,

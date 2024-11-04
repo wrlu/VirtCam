@@ -82,6 +82,9 @@ public class VideoUtils {
                 public void onInputBufferAvailable(@NonNull MediaCodec codec, int index) {
                     try {
                         ByteBuffer inputBuffer = codec.getInputBuffer(index);
+                        if (inputBuffer == null) {
+                            return;
+                        }
                         int sampleSize = extractor.readSampleData(inputBuffer, 0);
                         if (sampleSize > 0) {
                             long presentationTimeUs = extractor.getSampleTime();
@@ -120,12 +123,12 @@ public class VideoUtils {
 
                 @Override
                 public void onError(@NonNull MediaCodec codec, @NonNull MediaCodec.CodecException e) {
-
+                    Log.e(TAG, "MediaCodec.CodecException in onError", e);
                 }
 
                 @Override
                 public void onOutputFormatChanged(@NonNull MediaCodec codec, @NonNull MediaFormat format) {
-
+                    Log.w(TAG, "New output format: " + format);
                 }
             });
             mediaCodec.configure(mediaFormat, surface, null, 0);
