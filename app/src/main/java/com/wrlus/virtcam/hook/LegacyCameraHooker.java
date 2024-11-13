@@ -45,11 +45,11 @@ public class LegacyCameraHooker implements HookInterface {
     }
 
     private void startHook(ClassLoader classLoader) {
-        hookWithVideo(classLoader);
+        hookLegacyCamera(classLoader);
     }
 
     @SuppressWarnings({"deprecation"})
-    private void hookWithVideo(ClassLoader classLoader) {
+    private void hookLegacyCamera(ClassLoader classLoader) {
         if (!videoFile.exists()) {
             Log.e(TAG, "Cannot find virtual video, please put in " +
                     videoFile.getAbsolutePath());

@@ -8,6 +8,8 @@ import android.media.MediaCodecInfo;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.media.MediaPlayer;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.util.Log;
 import android.view.Surface;
 
@@ -31,7 +33,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  */
 public class VideoUtils {
     private static final String TAG = "VideoUtils";
-    private static final ConcurrentLinkedQueue<String> decodedFrames =
+    private static final ConcurrentLinkedQueue<String> decodedFrameFileNames =
             new ConcurrentLinkedQueue<>();
     public enum DecodeStatus {
         NOT_START,
@@ -71,13 +73,24 @@ public class VideoUtils {
             MediaFormat mediaFormat = extractor.getTrackFormat(trackIndex);
             mediaFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT,
                     MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible);
-            mediaFormat.setInteger(MediaFormat.KEY_WIDTH, 640);
-            mediaFormat.setInteger(MediaFormat.KEY_WIDTH, 480);
             MediaCodec mediaCodec = MediaCodec
                     .createDecoderByType(mediaFormat.getString(MediaFormat.KEY_MIME));
             mediaCodec.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT);
-            long startMs = System.currentTimeMillis();
+
+            // The handler thread to decode video frame.
+            HandlerThread mediaCodecThread = new HandlerThread("media_codec");
+            mediaCodecThread.setDaemon(true);
+            mediaCodecThread.start();
+            Handler mediaCodecHandler = new Handler(mediaCodecThread.getLooper());
+
+            // The handler thread to release output buffer to surface with time-based frame sync.
+            HandlerThread releaseOutputThread = new HandlerThread("release_output");
+            releaseOutputThread.setDaemon(true);
+            releaseOutputThread.start();
+            Handler releaseOutputHandler = new Handler(releaseOutputThread.getLooper());
             mediaCodec.setCallback(new MediaCodec.Callback() {
+                private long startMs = 0;
+
                 @Override
                 public void onInputBufferAvailable(@NonNull MediaCodec codec, int index) {
                     try {
@@ -89,12 +102,18 @@ public class VideoUtils {
                         if (sampleSize > 0) {
                             long presentationTimeUs = extractor.getSampleTime();
                             codec.queueInputBuffer(index, 0, sampleSize, presentationTimeUs, 0);
-                            extractor.advance();
                         } else {
-                            codec.queueInputBuffer(index, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                            codec.queueInputBuffer(index, 0, 0, 0,
+                                    MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                            // loop playing.
                             extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
-                            extractor.advance();
+                            // Put startMs initialize here.
+                            if (startMs == 0) {
+                                startMs = System.currentTimeMillis();
+                            }
+                            Log.d(TAG, "Loop Playing.");
                         }
+                        extractor.advance();
                     } catch (IllegalStateException e) {
                         Log.e(TAG, "IllegalStateException in onInputBufferAvailable", e);
                     }
@@ -105,15 +124,20 @@ public class VideoUtils {
                     if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
                         return;
                     }
-                    // Time sync
-                    long timeDifference = info.presentationTimeUs / 1000 - (System.currentTimeMillis() - startMs);
+                    // Time-based frame sync
+                    long presentationTimeMs = (info.presentationTimeUs / 1000);
+                    long timeDifference = presentationTimeMs - (System.currentTimeMillis() - startMs);
+                    Log.d(TAG, "[Debug] presentationTimeMs: " + presentationTimeMs + ", timeDifference: " + timeDifference);
                     if (timeDifference > 0) {
-                        try {
-                            Thread.sleep(timeDifference);
-                        } catch (InterruptedException e) {
-                            Log.e(TAG, "InterruptedException when sync in onOutputBufferAvailable", e);
-                        }
+                        releaseOutputHandler.postDelayed(() -> {
+                            releaseOutputBuffer(codec, index);
+                        }, timeDifference);
+                    } else {
+                        releaseOutputBuffer(codec, index);
                     }
+                }
+
+                private void releaseOutputBuffer(MediaCodec codec, int index) {
                     try {
                         codec.releaseOutputBuffer(index, true);
                     } catch (IllegalStateException e) {
@@ -122,15 +146,18 @@ public class VideoUtils {
                 }
 
                 @Override
-                public void onError(@NonNull MediaCodec codec, @NonNull MediaCodec.CodecException e) {
-                    Log.e(TAG, "MediaCodec.CodecException in onError", e);
+                public void onOutputFormatChanged(@NonNull MediaCodec codec, @NonNull MediaFormat format) {
+                    // Put startMs initialize here.
+                    if (startMs == 0) {
+                        startMs = System.currentTimeMillis();
+                    }
                 }
 
                 @Override
-                public void onOutputFormatChanged(@NonNull MediaCodec codec, @NonNull MediaFormat format) {
-                    Log.w(TAG, "New output format: " + format);
+                public void onError(@NonNull MediaCodec codec, @NonNull MediaCodec.CodecException e) {
+                    Log.e(TAG, "MediaCodec.CodecException in onError", e);
                 }
-            });
+            }, mediaCodecHandler);
             mediaCodec.configure(mediaFormat, surface, null, 0);
             mediaCodec.start();
             return mediaCodec;
@@ -153,7 +180,7 @@ public class VideoUtils {
             videoToFrames.setCallback(new VideoToFrames.Callback() {
                 @Override
                 public void onDecodeFrameToFile(int index, String fileName) {
-                    decodedFrames.add(fileName);
+                    decodedFrameFileNames.add(fileName);
                 }
 
                 @Override
@@ -170,9 +197,9 @@ public class VideoUtils {
 
     public static byte[] getReplacedPreviewFrame() {
         if (VideoUtils.getDecodeToFileStatus() == VideoUtils.DecodeStatus.FINISHED) {
-            String savedFrameFileName = VideoUtils.getDecodedFrames().poll();
+            String savedFrameFileName = VideoUtils.getDecodedFrameFileNames().poll();
             // Looping play.
-            VideoUtils.getDecodedFrames().add(savedFrameFileName);
+            VideoUtils.getDecodedFrameFileNames().add(savedFrameFileName);
             Log.w(TAG, "Serve replaced preview frame: " + savedFrameFileName);
             return readFile(savedFrameFileName);
         } else {
@@ -256,7 +283,7 @@ public class VideoUtils {
         return decodeToFileStatus;
     }
 
-    public static ConcurrentLinkedQueue<String> getDecodedFrames() {
-        return decodedFrames;
+    public static ConcurrentLinkedQueue<String> getDecodedFrameFileNames() {
+        return decodedFrameFileNames;
     }
 }

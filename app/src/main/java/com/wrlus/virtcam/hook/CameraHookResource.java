@@ -7,19 +7,9 @@ import android.media.MediaCodec;
 import android.media.MediaPlayer;
 import android.view.Surface;
 
+import androidx.annotation.NonNull;
+
 public class CameraHookResource {
-    public CameraHookResource(Surface surface, SurfaceTexture surfaceTexture) {
-        fakeSurface = surface;
-        fakeSurfaceTexture = surfaceTexture;
-        isConfigured = false;
-    }
-
-    public CameraHookResource(Surface surface, ImageReader imageReader) {
-        fakeSurface = surface;
-        fakeImageReader = imageReader;
-        isConfigured = false;
-    }
-
     /**
      * Fake surface to receive camera image.
      */
@@ -44,4 +34,29 @@ public class CameraHookResource {
      * Surface is configured by addTarget and createCaptureSession.
      */
     public boolean isConfigured;
+
+    public CameraHookResource(Surface surface, SurfaceTexture surfaceTexture) {
+        fakeSurface = surface;
+        fakeSurfaceTexture = surfaceTexture;
+        isConfigured = false;
+    }
+
+    public CameraHookResource(Surface surface, ImageReader imageReader) {
+        fakeSurface = surface;
+        fakeImageReader = imageReader;
+        isConfigured = false;
+    }
+
+    @NonNull
+    @Override
+    public String toString() {
+        return "CameraHookResource{" +
+                "fakeSurface=" + fakeSurface +
+                ", fakeSurfaceTexture=" + fakeSurfaceTexture +
+                ", fakeImageReader=" + fakeImageReader +
+                ", mediaPlayer=" + mediaPlayer +
+                ", mediaCodec=" + mediaCodec +
+                ", isConfigured=" + isConfigured +
+                '}';
+    }
 }
