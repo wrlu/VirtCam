@@ -1,11 +1,13 @@
 package com.wrlus.virtcam.hook;
 
+import android.annotation.SuppressLint;
 import android.graphics.ImageFormat;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.OutputConfiguration;
 import android.hardware.camera2.params.SessionConfiguration;
+import android.media.Image;
 import android.media.ImageReader;
 import android.os.Build;
 import android.os.Handler;
@@ -17,6 +19,12 @@ import com.wrlus.virtcam.utils.VideoUtils;
 import com.wrlus.xposed.framework.HookInterface;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.lang.reflect.Method;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -39,6 +47,10 @@ public class Camera2Hooker implements HookInterface {
             new ConcurrentHashMap<>();
     private final Set<ImageReader> imageReaderSet =
             Collections.synchronizedSet(new HashSet<>());
+    private final Map<ImageReader, ImageHookResource> imageInjectResourceMap =
+            new ConcurrentHashMap<>();
+    private final Map<ImageReader, ImageHookResource> dumpFrameResourceMap =
+            new ConcurrentHashMap<>();
     private final File baseFile;
 
     public Camera2Hooker(File baseFile) {
@@ -53,6 +65,12 @@ public class Camera2Hooker implements HookInterface {
     private void startHook(ClassLoader classLoader) {
         hookImageReader();
         hookCamera2(classLoader);
+        if (Config.enableCamera2ImageInject || Config.enableCamera2DumpFrame) {
+            hookAcquireNextImage();
+        }
+        if (Config.enableCamera2ImageInject) {
+            hookGetPlanes(classLoader);
+        }
     }
 
     public void hookImageReader() {
@@ -81,14 +99,14 @@ public class Camera2Hooker implements HookInterface {
                             hookImageReaderNewInstance(width, height, format, maxImages, imageReader);
                         }
                     });
-            XposedHelpers.findAndHookMethod(ImageReader.class, "close", new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
-                            ImageReader imageReader = (ImageReader) param.thisObject;
-                            imageReaderSet.remove(imageReader);
-                        }
-                    });
         }
+        XposedHelpers.findAndHookMethod(ImageReader.class, "close", new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) {
+                ImageReader imageReader = (ImageReader) param.thisObject;
+                imageReaderSet.remove(imageReader);
+            }
+        });
     }
 
     private void hookImageReaderNewInstance(int width, int height, int format, int maxImages,
@@ -124,7 +142,7 @@ public class Camera2Hooker implements HookInterface {
                         for (Surface output : outputs) {
                             Log.d(TAG, "Output surface: " + output);
                             CameraHookResource resource = surfaceHookResourceMap
-                                    .getOrDefault(output, findAndReplaceSurface(output, i));
+                                    .getOrDefault(output, replaceSurface(output, i));
                             boolean isReuse = surfaceHookResourceMap.containsKey(output);
                             if (resource != null) {
                                 fakeOutputs.add(resource.fakeSurface);
@@ -137,7 +155,9 @@ public class Camera2Hooker implements HookInterface {
                                         " fakeSurface in createCaptureSession: " +
                                         output + " -> " + resource.fakeSurface);
                             } else {
-                                Log.e(TAG, "Generate camera hook resource failed.");
+                                Log.w(TAG, "Generate camera hook resource failed" +
+                                        ", use original one.");
+                                fakeOutputs.add(output);
                             }
                             ++i;
                         }
@@ -162,7 +182,7 @@ public class Camera2Hooker implements HookInterface {
                                 Log.d(TAG, "Output config: " + outputConfig);
                                 Surface output = outputConfig.getSurface();
                                 CameraHookResource resource = surfaceHookResourceMap
-                                        .getOrDefault(output, findAndReplaceSurface(output, i));
+                                        .getOrDefault(output, replaceSurface(output, i));
                                 boolean isReuse = surfaceHookResourceMap.containsKey(output);
                                 if (resource != null) {
                                     fakeOutputConfigs.add(new OutputConfiguration(resource.fakeSurface));
@@ -175,7 +195,9 @@ public class Camera2Hooker implements HookInterface {
                                             " fakeSurface in createCaptureSession: " +
                                             output + " -> " + resource.fakeSurface);
                                 } else {
-                                    Log.e(TAG, "Generate camera hook resource failed.");
+                                    Log.w(TAG, "Generate camera hook resource failed" +
+                                            ", use original one.");
+                                    fakeOutputConfigs.add(outputConfig);
                                 }
                                 ++i;
                             }
@@ -196,7 +218,7 @@ public class Camera2Hooker implements HookInterface {
                         Surface target = (Surface) param.args[0];
                         Log.d(TAG, "Add target surface: " + target);
                         CameraHookResource resource = surfaceHookResourceMap
-                                .getOrDefault(target, findAndReplaceSurface(target, addTargetSurfaceCount));
+                                .getOrDefault(target, replaceSurface(target, addTargetSurfaceCount));
                         boolean isReuse = surfaceHookResourceMap.containsKey(target);
                         if (resource != null) {
                             param.args[0] = resource.fakeSurface;
@@ -209,7 +231,8 @@ public class Camera2Hooker implements HookInterface {
                                     " fakeSurface in addTarget: " +
                                     target + " -> " + resource.fakeSurface);
                         } else {
-                            Log.e(TAG, "Generate camera hook resource failed.");
+                            Log.w(TAG, "Generate camera hook resource failed" +
+                                    ", use original one.");
                         }
                     }
                 });
@@ -227,8 +250,8 @@ public class Camera2Hooker implements HookInterface {
                                 }
                                 boolean isTexture = isCreateBySurfaceTexture(output);
                                 // Use MediaPlayer to inject SurfaceTexture.
-                                if (isTexture &&
-                                        resource.mediaPlayer == null && resource.isConfigured) {
+                                if (isTexture && resource.mediaPlayer == null
+                                        && resource.isConfigured) {
                                     File videoFile = new File(baseFile, Config.videoPath);
                                     if (videoFile.exists()) {
                                         resource.mediaPlayer =
@@ -236,36 +259,30 @@ public class Camera2Hooker implements HookInterface {
                                         Log.d(TAG, "Start playing video" +
                                                 " on output surface: " + output
                                                 + ", resource: " + resource);
+                                        continue;
                                     }
                                 }
                                 // Use MediaCodec to inject ImageReader.
-                                if (!isTexture &&
-                                        resource.mediaCodec == null && resource.isConfigured) {
+                                if (!isTexture && resource.mediaCodec == null
+                                        && resource.isConfigured) {
                                     // Only support YUV_420_888 format now.
                                     if (resource.fakeImageReader.getImageFormat()
                                             != ImageFormat.YUV_420_888) {
                                         return;
                                     }
                                     // Fake image reader has same parameters with the origin one.
-                                    File rotatedSpecResolutionVideoFile = new File(baseFile,
-                                            selectSpecResolutionVideo(resource.fakeImageReader));
                                     File rotatedVideoFile = new File(baseFile,
-                                            Config.rotatedVideoPath);
+                                            selectSpecResolutionVideo(resource.fakeImageReader));
+                                    if (!rotatedVideoFile.exists()) {
+                                        rotatedVideoFile = new File(baseFile,
+                                                Config.rotatedVideoPath);
+                                    }
                                     // Use rotated video in ImageReader hook.
-                                    if (rotatedSpecResolutionVideoFile.exists()) {
+                                    if (rotatedVideoFile.exists()) {
                                         resource.mediaCodec = VideoUtils.decodeVideoToSurface(
-                                                rotatedSpecResolutionVideoFile, output);
-                                        Log.d(TAG, "Start decode special resolution video" +
-                                                " on output surface: " + output
-                                                + ", resource: " + resource);
-                                    } else {
-                                        if (rotatedVideoFile.exists()) {
-                                            resource.mediaCodec = VideoUtils.decodeVideoToSurface(
-                                                    rotatedVideoFile, output);
-                                            Log.d(TAG, "Start decode video" +
-                                                    " on output surface: " + output
-                                                    + ", resource: " + resource);
-                                        }
+                                                rotatedVideoFile, output);
+                                        Log.d(TAG, "Start decode video on output surface: "
+                                                + output + ", resource: " + resource);
                                     }
                                 }
                             }
@@ -289,11 +306,17 @@ public class Camera2Hooker implements HookInterface {
                 });
     }
 
-    private CameraHookResource findAndReplaceSurface(Surface output, int index) {
+    private CameraHookResource replaceSurface(Surface output, int index) {
+        // We don't want to replace any surface when dumping surface.
+        if (Config.enableCamera2DumpFrame)
+            return null;
         if (isCreateBySurfaceTexture(output)) {
             SurfaceTexture fakeSurfaceTexture = new SurfaceTexture(10 + index);
             return new CameraHookResource(new Surface(fakeSurfaceTexture), fakeSurfaceTexture);
         } else {
+            // We don't want to modify the original image reader when doing image inject tasks.
+            if (Config.enableCamera2ImageInject)
+                return null;
             for (ImageReader imageReader : imageReaderSet) {
                 if (output.equals(imageReader.getSurface())) {
                     // Create a fake image reader with same parameters.
@@ -307,18 +330,163 @@ public class Camera2Hooker implements HookInterface {
         return null;
     }
 
-    public static String selectSpecResolutionVideo(ImageReader imageReader) {
+    public void hookAcquireNextImage() {
+        XposedHelpers.findAndHookMethod(ImageReader.class, "acquireNextImage",
+                new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) {
+                Log.w(TAG, "After ImageReader acquireNextImage");
+                ImageReader imageReader = (ImageReader) param.thisObject;
+                Image image = (Image) param.getResult();
+                if (!(checkImageFormat(image) && imageReaderSet.contains(imageReader))) {
+                    return;
+                }
+                // Control image inject count here for getPlanes can be called more than one time.
+                if (Config.enableCamera2ImageInject) {
+                    if (imageInjectResourceMap.containsKey(imageReader)) {
+                        ImageHookResource resource = imageInjectResourceMap.get(imageReader);
+                        if (resource.count < resource.maxCount - 1) {
+                            ++resource.count;
+                        } else {
+                            // Loop playing.
+                            resource.count = 0;
+                        }
+                    } else {
+                        File imageFramesPath = new File(baseFile,
+                                selectSpecResolutionImageFrames(image));
+                        ImageHookResource resource = new ImageHookResource(imageFramesPath);
+                        imageInjectResourceMap.put(imageReader, resource);
+                        if (imageFramesPath.exists() && imageFramesPath.isDirectory()) {
+                            resource.maxCount = imageFramesPath.listFiles().length / 3;
+                        } else {
+                            Log.e(TAG, "Cannot list files: " + imageFramesPath);
+                            resource.maxCount = -1;
+                        }
+                    }
+                }
+                if (Config.enableCamera2DumpFrame) {
+                    ImageHookResource resource;
+                    if (dumpFrameResourceMap.containsKey(imageReader)) {
+                        resource = dumpFrameResourceMap.get(imageReader);
+                    } else {
+                        resource = new ImageHookResource(createDumpFrameDir(image));
+                        dumpFrameResourceMap.put(imageReader, resource);
+                    }
+                    try {
+                        Image.Plane[] planes = image.getPlanes();
+                        writeByteBufferToFile(planes[0].getBuffer(),
+                                new File(resource.imagesPath, resource.count + ".y"));
+                        writeByteBufferToFile(planes[1].getBuffer(),
+                                new File(resource.imagesPath, resource.count + ".u"));
+                        writeByteBufferToFile(planes[2].getBuffer(),
+                                new File(resource.imagesPath, resource.count + ".v"));
+                    } catch (IOException e) {
+                        Log.e(TAG, "Write YUV data to file failed, " + resource, e);
+                    }
+                    ++resource.count;
+                }
+            }
+        });
+    }
+
+    public void hookGetPlanes(ClassLoader classLoader) {
+        XposedHelpers.findAndHookMethod("android.media.ImageReader$SurfaceImage",
+                classLoader, "getPlanes", new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) {
+                Log.w(TAG, "After ImageReader$SurfaceImage getPlanes");
+                Image image = (Image) param.thisObject;
+                ImageReader imageReader = getReaderFromSurfaceImage(image);
+                if (Config.enableCamera2ImageInject) {
+                    ImageHookResource resource = imageInjectResourceMap.get(imageReader);
+                    if (resource != null && resource.maxCount != -1) {
+                        // Replace ByteBuffer in surface planes.
+                        try {
+                            Image.Plane[] planes = (Image.Plane[]) param.getResult();
+                            replacePlaneByteBuffer(planes[0],
+                                    new File(resource.imagesPath, resource.count + ".y"));
+                            replacePlaneByteBuffer(planes[1],
+                                    new File(resource.imagesPath, resource.count + ".u"));
+                            replacePlaneByteBuffer(planes[2],
+                                    new File(resource.imagesPath, resource.count + ".v"));
+                        } catch (IOException e) {
+                            Log.e(TAG, "Read YUV data from file failed, " + resource, e);
+                        }
+                    } else {
+                        Log.e(TAG, "Cannot get ImageHookResource for ImageReader: "
+                                + imageReader);
+                    }
+                }
+            }
+        });
+    }
+
+    private static boolean isCreateBySurfaceTexture(Surface surface) {
+        return surface.toString().contains(SurfaceTexture.class.getName());
+    }
+
+    private static boolean checkImageFormat(Image image) {
+        return image.getFormat() == ImageFormat.YUV_420_888;
+    }
+
+    private static String selectSpecResolutionVideo(ImageReader imageReader) {
         int width = imageReader.getWidth();
         int height = imageReader.getHeight();
         return Config.rotatedVideoPath.replace(".mp4", "_") +
                 width + "x" + height + ".mp4";
     }
 
-    public static boolean isCreateBySurfaceTexture(Surface surface) {
-        return surface.toString().contains(SurfaceTexture.class.getName());
+    private static String selectSpecResolutionImageFrames(Image image) {
+        int width = image.getWidth();
+        int height = image.getHeight();
+        return Config.imageFramesPath + "_" + width + "x" + height;
     }
 
-    public static boolean matchStackTrace(StackTraceElement[] stackTraces,
+    private File createDumpFrameDir(Image image) {
+        int width = image.getWidth();
+        int height = image.getHeight();
+        File file = new File(baseFile, "files/fkv/dump_frame_" +
+                width + "x" + height + "_" + System.currentTimeMillis());
+        Log.d(TAG, "Create dump frame path " + file.getAbsolutePath()
+                + ", result: " + file.mkdir());
+        return file;
+    }
+
+    private static void writeByteBufferToFile(ByteBuffer byteBuffer, File output) throws IOException {
+        FileOutputStream fos = new FileOutputStream(output);
+        FileChannel writeChannel = fos.getChannel();
+        int bytes = writeChannel.write(byteBuffer);
+        writeChannel.close();
+        fos.close();
+        Log.d(TAG, "Write " + bytes + " bytes to file " + output.getAbsolutePath());
+    }
+
+    @SuppressLint({"PrivateApi", "SoonBlockedPrivateApi"})
+    private static void replacePlaneByteBuffer(Image.Plane plane, File input) throws IOException {
+        ByteBuffer byteBuffer = plane.getBuffer();
+        FileInputStream fis = new FileInputStream(input);
+        FileChannel readChannel = fis.getChannel();
+        int bytes = readChannel.read(byteBuffer);
+        byteBuffer.flip();
+        readChannel.close();
+        fis.close();
+        Log.d(TAG, "Read " + bytes + " bytes from file " + input.getAbsolutePath());
+    }
+
+    @SuppressLint({"PrivateApi", "SoonBlockedPrivateApi"})
+    private static ImageReader getReaderFromSurfaceImage(Image image) {
+        try {
+            Method getReaderMethod = Class.forName("android.media.ImageReader$SurfaceImage")
+                    .getDeclaredMethod("getReader");
+            getReaderMethod.setAccessible(true);
+            return (ImageReader) getReaderMethod.invoke(image);
+        } catch (ReflectiveOperationException e) {
+            Log.e(TAG, "getReaderFromSurfaceImage", e);
+        }
+        return null;
+    }
+
+    private static boolean matchStackTrace(StackTraceElement[] stackTraces,
                                     String className, String methodName) {
         for (StackTraceElement trace : stackTraces) {
             if (className.equals(trace.getClassName()) && methodName.equals(trace.getMethodName())) {
@@ -327,4 +495,5 @@ public class Camera2Hooker implements HookInterface {
         }
         return false;
     }
+
 }

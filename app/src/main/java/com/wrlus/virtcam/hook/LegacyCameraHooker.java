@@ -126,7 +126,7 @@ public class LegacyCameraHooker implements HookInterface {
                         Camera.PreviewCallback callback = (Camera.PreviewCallback) param.args[0];
                         if (VideoUtils.getDecodeToFileStatus() == VideoUtils.DecodeStatus.NOT_START) {
                             File outputDir = new File(baseFile,
-                                    "files/decode_video_" + UUID.randomUUID());
+                                    "files/fkv/decode_video_" + System.currentTimeMillis());
                             VideoUtils.decodeVideoAndSaveNV21(videoFile, outputDir);
                         }
                         // Hook the real preview callback method.
@@ -142,7 +142,7 @@ public class LegacyCameraHooker implements HookInterface {
         File dumpFrameOutput = null;
         if (Config.enableLegacyCameraDumpFrame) {
             dumpFrameOutput = new File(
-                    baseFile, "files/dump_frame_" + UUID.randomUUID() + "/");
+                    baseFile, "files/fkv/dump_frame_" + System.currentTimeMillis());
             if (!dumpFrameOutput.exists()) {
                 Log.e(TAG, "dump frame output mkdir: " +
                         dumpFrameOutput.mkdir());
@@ -155,7 +155,7 @@ public class LegacyCameraHooker implements HookInterface {
                 new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        Log.w(TAG, "Before " + callbackClass.getSimpleName() + " onPreviewFrame");
+                        Log.w(TAG, "Before " + callbackClass.getName() + " onPreviewFrame");
                         Camera camera = (Camera) param.args[1];
                         Camera.Size previewSize = camera
                                 .getParameters().getPreviewSize();
@@ -176,7 +176,7 @@ public class LegacyCameraHooker implements HookInterface {
                     }
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
-                        Log.w(TAG, "After onPreviewFrame");
+                        Log.w(TAG, "After " + callbackClass.getName() + " onPreviewFrame");
                         if (Config.enableLegacyCameraDumpFrame) {
                             byte[] data = (byte[]) param.args[0];
                             Camera camera = (Camera) param.args[1];

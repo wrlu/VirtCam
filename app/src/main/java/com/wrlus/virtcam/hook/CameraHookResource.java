@@ -2,7 +2,6 @@ package com.wrlus.virtcam.hook;
 
 import android.graphics.SurfaceTexture;
 import android.media.ImageReader;
-import android.media.ImageWriter;
 import android.media.MediaCodec;
 import android.media.MediaPlayer;
 import android.view.Surface;
