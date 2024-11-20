@@ -6,13 +6,12 @@ import android.util.Log;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 
-import com.wrlus.virtcam.utils.Config;
+import com.wrlus.virtcam.utils.Settings;
 import com.wrlus.virtcam.utils.VideoUtils;
 import com.wrlus.xposed.framework.HookInterface;
 
 import java.io.File;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import de.robv.android.xposed.XC_MethodHook;
@@ -36,7 +35,7 @@ public class LegacyCameraHooker implements HookInterface {
 
     public LegacyCameraHooker(File baseFile) {
         this.baseFile = baseFile;
-        videoFile = new File(baseFile, Config.videoPath);
+        videoFile = new File(baseFile, Settings.get("videoPath"));
     }
 
     @Override
@@ -139,15 +138,8 @@ public class LegacyCameraHooker implements HookInterface {
 
     @SuppressWarnings({"deprecation"})
     private void hookPreviewCallback(Camera.PreviewCallback callback) {
-        File dumpFrameOutput = null;
-        if (Config.enableLegacyCameraDumpFrame) {
-            dumpFrameOutput = new File(
-                    baseFile, "files/fkv/dump_frame_" + System.currentTimeMillis());
-            if (!dumpFrameOutput.exists()) {
-                Log.e(TAG, "dump frame output mkdir: " +
-                        dumpFrameOutput.mkdir());
-            }
-        }
+        File dumpFrameOutput = new File(
+                baseFile, "files/fkv/dump_frame_" + System.currentTimeMillis());
         Class<? extends Camera.PreviewCallback> callbackClass = callback.getClass();
         Log.e(TAG, "Callback class name: " + callbackClass.getName());
         XposedHelpers.findAndHookMethod(callbackClass, "onPreviewFrame",
@@ -177,7 +169,11 @@ public class LegacyCameraHooker implements HookInterface {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
                         Log.w(TAG, "After " + callbackClass.getName() + " onPreviewFrame");
-                        if (Config.enableLegacyCameraDumpFrame) {
+                        if (Settings.get("enableLegacyCameraDumpFrame").equals("1")) {
+                            if (!dumpFrameOutput.exists()) {
+                                Log.e(TAG, "dump frame output mkdir: " +
+                                        dumpFrameOutput.mkdir());
+                            }
                             byte[] data = (byte[]) param.args[0];
                             Camera camera = (Camera) param.args[1];
                             Camera.Size previewSize = camera
