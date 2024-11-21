@@ -1,0 +1,8 @@
+enableCamera2Hook=1
+enableCamera2DumpFrame=0
+enableCamera2ImageInject=0
+enableLegacyCameraHook=1
+enableLegacyCameraDumpFrame=0
+videoPath=files/fkv/virtual.mp4
+rotatedVideoPath=files/fkv/rotated_virtual.mp4
+imageFramesPath=files/fkv/image_frames

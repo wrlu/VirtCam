@@ -2,23 +2,6 @@
 Android Virtual Camera
 > Warning: This project is for study usage only, DO NOT use it for illegal purposes.
 
-# Usage
-Inject video path: 
-```
-/sdcard/Android/data/{hooked_package_name}/files/fkv/virtual.mp4
-```
-(Camera 2 hook only) Inject video path (rotated):
-```
-/sdcard/Android/data/{hooked_package_name}/files/fkv/rotated_virtual.mp4
-```
-(Legacy Camera hook only) This video will be decoded and save frames to this path (can be deleted after hooked manually):
-```
-/sdcard/Android/data/{hooked_package_name}/files/decode_video_{random_uuid}/
-```
-(Legacy Camera hook, Optional) Saved preview callback frames to this path (can be deleted after hooked manually):
-```
-/sdcard/Android/data/{hooked_package_name}/files/dump_frame_{random_uuid}/
-```
 
 # Hooked APIs:
 ## Legacy Camera (android.hardware.Camera)
@@ -35,6 +18,22 @@ android.hardware.camera2.impl.CameraDeviceImpl#createCaptureSession
 android.hardware.camera2.CaptureRequest$Builder#addTarget
 android.hardware.camera2.impl.CameraCaptureSessionImpl#setRepeatingRequest
 android.hardware.camera2.impl.CameraDeviceImpl#close
+android.media.ImageReader#newInstance
+android.media.ImageReader#close
+android.media.ImageReader#acquireNextImage
+android.media.ImageReader$SurfaceImage#getPlanes
+```
+
+# Default settings:
+```
+enableCamera2Hook=1
+enableCamera2DumpFrame=0
+enableCamera2ImageInject=0
+enableLegacyCameraHook=1
+enableLegacyCameraDumpFrame=0
+videoPath=files/fkv/virtual.mp4
+rotatedVideoPath=files/fkv/rotated_virtual.mp4
+imageFramesPath=files/fkv/image_frames
 ```
 
 # Credits
