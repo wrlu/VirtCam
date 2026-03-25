@@ -1,4 +1,4 @@
-package com.wrlus.virtcam.utils;
+package net.wrlu.virtcam.utils;
 
 import android.graphics.ImageFormat;
 import android.graphics.Rect;

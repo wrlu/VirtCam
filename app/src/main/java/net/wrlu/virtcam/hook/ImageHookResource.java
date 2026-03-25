@@ -1,4 +1,4 @@
-package com.wrlus.virtcam.hook;
+package net.wrlu.virtcam.hook;
 
 import androidx.annotation.NonNull;
 

@@ -1,4 +1,4 @@
-package com.wrlus.virtcam.hook;
+package net.wrlu.virtcam.hook;
 
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
@@ -6,9 +6,9 @@ import android.util.Log;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 
-import com.wrlus.virtcam.utils.Settings;
-import com.wrlus.virtcam.utils.VideoUtils;
-import com.wrlus.xposed.framework.HookInterface;
+import net.wrlu.virtcam.utils.Settings;
+import net.wrlu.virtcam.utils.VideoUtils;
+import net.wrlu.xposed.framework.HookInterface;
 
 import java.io.File;
 import java.util.Map;

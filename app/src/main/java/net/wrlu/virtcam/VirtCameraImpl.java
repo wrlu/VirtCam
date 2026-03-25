@@ -1,11 +1,11 @@
-package com.wrlus.virtcam;
+package net.wrlu.virtcam;
 
 import android.os.Environment;
 
-import com.wrlus.virtcam.hook.LegacyCameraHooker;
-import com.wrlus.virtcam.hook.Camera2Hooker;
-import com.wrlus.virtcam.utils.Settings;
-import com.wrlus.xposed.framework.HookInterface;
+import net.wrlu.virtcam.hook.LegacyCameraHooker;
+import net.wrlu.virtcam.hook.Camera2Hooker;
+import net.wrlu.virtcam.utils.Settings;
+import net.wrlu.xposed.framework.HookInterface;
 
 import java.io.File;
 

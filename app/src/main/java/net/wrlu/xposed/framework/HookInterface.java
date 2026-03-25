@@ -1,4 +1,4 @@
-package com.wrlus.xposed.framework;
+package net.wrlu.xposed.framework;
 
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 

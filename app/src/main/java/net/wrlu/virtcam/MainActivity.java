@@ -1,4 +1,4 @@
-package com.wrlus.virtcam;
+package net.wrlu.virtcam;
 
 import android.os.Bundle;
 

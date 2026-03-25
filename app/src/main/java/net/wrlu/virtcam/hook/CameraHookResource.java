@@ -1,4 +1,4 @@
-package com.wrlus.virtcam.hook;
+package net.wrlu.virtcam.hook;
 
 import android.graphics.SurfaceTexture;
 import android.media.ImageReader;
